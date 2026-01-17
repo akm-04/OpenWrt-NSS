@@ -1,0 +1,11 @@
+# Put your custom commands here that should be executed once
+# the system init finished. By default this file does nothing.
+
+# Start Fan and LED control
+/sbin/fan_control &
+/sbin/led_monitor &
+
+# Start iperf3 server in Daemon mode
+/usr/bin/iperf3 -s -D
+
+exit 0

@@ -1,0 +1,88 @@
+uci set network.lan.ipaddr='172.17.0.1'
+uci set wireless.radio0.country='US'
+uci set wireless.radio1.country='US'
+uci set wireless.radio2.country='US'
+uci set wireless.radio0.disabled=0
+uci set wireless.radio1.disabled=0
+uci set wireless.radio2.disabled=1
+uci set pbuf.opt.memory_profile=auto
+# Disable generic flow offloading so NSS can take over
+uci set firewall.@defaults[0].flow_offloading=0
+uci set ecm.@general[0].enable_bridge_filtering=0
+uci set system.@system[0].cronloglevel='7'
+uci commit wireless
+uci commit pbuf
+uci commit firewall
+uci commit ecm
+uci commit system
+
+# Must disable packet steering for NSS
+uci set network.@device[0].packet_steering=0
+uci set network.@device[0].flow_offloading=0
+uci set network.@device[0].flow_offloading_hw=0
+uci commit network
+
+# --- 5GHz Radio (radio0) Configuration ---
+# Transmit Beamforming (TxBF) & MU-MIMO
+uci set wireless.radio0.mu_beamformer='1'
+uci set wireless.radio0.he_su_beamformer='1'
+uci set wireless.radio0.he_su_beamformee='1'
+uci set wireless.radio0.he_mu_beamformer='1'
+uci set wireless.radio0.vht_mu_beamformer='1'
+
+# Efficiency: OFDMA, BSS Coloring, TWT, and EMA
+uci set wireless.radio0.ofdma='1'
+uci set wireless.radio0.he_mu_edca='1'
+uci set wireless.radio0.bss_color='11'
+uci set wireless.radio0.twt='1'
+uci set wireless.radio0.ema='1'
+
+# --- 2.4GHz Radio (radio1) Configuration ---
+# Transmit Beamforming (TxBF) & MU-MIMO
+uci set wireless.radio1.mu_beamformer='1'
+uci set wireless.radio1.he_su_beamformer='1'
+uci set wireless.radio1.he_su_beamformee='1'
+uci set wireless.radio1.he_mu_beamformer='1'
+
+# Efficiency: OFDMA, BSS Coloring, and TWT
+uci set wireless.radio1.ofdma='1'
+uci set wireless.radio1.he_mu_edca='1'
+uci set wireless.radio1.bss_color='22'
+uci set wireless.radio1.twt='1'
+
+# --- Apply Changes ---
+uci commit wireless
+wifi up
+
+# Delete radio2 as this wont be available anyway once board-2.bin is replaced
+uci delete wireless.radio2
+uci delete wireless.default_radio2
+uci commit wireless
+wifi reload
+
+# Setup custom commands
+/sbin/setup_custom_commands.sh
+
+is_initramfs() {
+    # If root is NOT overlay, we are in Initramfs/Tmpfs
+    rootfstype=$(awk '$2=="/"{print $3}' /proc/mounts)
+    [ "$rootfstype" != "overlay" ]
+}
+
+if is_initramfs; then
+    logger -t rax120v2_init "Running in Initramfs (tmpfs). Skipping Caldata fix."
+    exit 0
+fi
+
+# Spawn a background process to call caldata fix script
+(
+    # Wait 10 seconds
+    sleep 10
+    
+    logger -t rax120v2_fix "Wait time over. Starting Caldata/Board Fix..."
+    
+    # Execute the fix script
+    /sbin/fix_caldata_rax120v2.sh
+) &
+
+exit 0

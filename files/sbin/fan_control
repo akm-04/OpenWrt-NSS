@@ -1,0 +1,119 @@
+#!/bin/sh
+
+# --- CONFIGURATION: PATHS ---
+
+# 1. Auto-Detect Fan Path
+FAN_SENSOR=$(ls /sys/class/hwmon/hwmon*/fan1_input 2>/dev/null | head -n1)
+FAN_CTRL=$(dirname "$FAN_SENSOR")
+PID_FILE="/var/run/auto_fan.pid"
+
+# --- CONFIGURATION: TIMING ---
+SLEEP_INTERVAL=30 
+
+# --- CONFIGURATION: TEMPERATURE THRESHOLDS (Celsius) ---
+TEMP_LOW=40       
+TEMP_MID=55       
+TEMP_HIGH=60      
+TEMP_TURBO=65     
+
+# --- CONFIGURATION: HYSTERESIS ---
+HYST=3            
+
+# --- CONFIGURATION: PWM SPEEDS (0-255) ---
+SPEED_OFF=0
+SPEED_LOW=170
+SPEED_MID=185
+SPEED_HIGH=210
+SPEED_TURBO=255
+
+# Exit if FAN_PATH is not found
+if [ -z "$FAN_CTRL" ]; then
+    logger -t auto_fan "CRITICAL: Could not find fan hardware. Exiting."
+    exit 1
+fi
+
+# CLEANUP LOGIC
+cleanup() {
+    logger -t auto_fan "Service stopping. Cleaning up PID file."
+    rm -f "$PID_FILE"
+    exit 0
+}
+
+# Trap signals: EXIT (normal exit), INT (Ctrl+C), TERM (kill command)
+trap cleanup EXIT INT TERM
+
+# ENSURE ONLY ONE INSTANCE RUNS
+if [ -f "$PID_FILE" ]; then
+    PID=$(cat "$PID_FILE")
+    if kill -0 "$PID" 2>/dev/null; then
+        echo "auto_fan is already running (PID: $PID). Exiting."
+        exit 1
+    fi
+fi
+echo "$$" > "$PID_FILE"
+
+# Start the continuous loop
+logger -t auto_fan "Background service started (PID: $$). Scanning all thermal zones."
+
+while true; do
+    # 1. FIND MAX TEMP (Scan all sensors: CPU, NSS, WiFi)
+    MAX_TEMP=0
+    
+    for zone in /sys/class/thermal/thermal_zone*/temp; do
+        if [ -r "$zone" ]; then
+            # Read raw temp (e.g., 48400)
+            RAW_TEMP=$(cat "$zone" 2>/dev/null)
+            
+            # Sanity check: ensure it is a number
+            case "$RAW_TEMP" in
+                ''|*[!0-9]*) continue ;;
+            esac
+
+            # Convert to Celsius (48)
+            THIS_TEMP=$((RAW_TEMP / 1000))
+            
+            # Update Max if this one is hotter
+            if [ "$THIS_TEMP" -gt "$MAX_TEMP" ]; then
+                MAX_TEMP=$THIS_TEMP
+            fi
+        fi
+    done
+    
+    # Fallback safety: If scanning failed completely, assume 50C to be safe
+    if [ "$MAX_TEMP" -eq 0 ]; then
+        MAX_TEMP=50
+    fi
+
+    # 2. Ensure Manual Mode is enabled
+    # We check this every loop because sometimes the OS tries to reset it
+    if [ -f "$FAN_CTRL/pwm1_enable" ]; then
+         if [ "$(cat "$FAN_CTRL/pwm1_enable")" != "1" ]; then
+             echo 1 > "$FAN_CTRL/pwm1_enable"
+         fi
+    fi
+
+    # 3. Determine Target Speed with Hysteresis
+    CURRENT_PWM=$(cat "$FAN_CTRL/pwm1")
+
+    if [ "$MAX_TEMP" -ge "$TEMP_TURBO" ]; then
+        TARGET=$SPEED_TURBO
+    elif [ "$MAX_TEMP" -ge "$TEMP_HIGH" ]; then
+        TARGET=$SPEED_HIGH
+    elif [ "$MAX_TEMP" -ge "$TEMP_MID" ]; then
+        TARGET=$SPEED_MID
+    elif [ "$MAX_TEMP" -ge "$TEMP_LOW" ]; then
+        TARGET=$SPEED_LOW
+    elif [ "$MAX_TEMP" -le "$((TEMP_LOW - HYST))" ]; then
+        TARGET=$SPEED_OFF
+    else
+        TARGET=$CURRENT_PWM
+    fi
+
+    # 4. Apply Speed
+    if [ "$CURRENT_PWM" -ne "$TARGET" ]; then
+        echo "$TARGET" > "$FAN_CTRL/pwm1"
+        logger -t auto_fan "Max Temp: ${MAX_TEMP}C. Adjusting fan to $TARGET."
+    fi
+
+    sleep "$SLEEP_INTERVAL"
+done

@@ -1,0 +1,28 @@
+#!/bin/sh
+
+# --- CONFIG ---
+TARGET="1.1.1.1"
+
+# LED Paths
+GREEN="/sys/class/leds/green:/brightness"
+RED="/sys/class/leds/red:/brightness"
+
+# --- LOOP FOREVER ---
+while true; do
+    
+    # Ping Check (1 packet, 1 second timeout)
+    if ping -c 1 -W 1 "$TARGET" >/dev/null 2>&1; then
+        # --- ONLINE ---
+        # Turn Red OFF first, then Green ON
+        echo 0 > "$RED"
+        echo 255 > "$GREEN"
+    else
+        # --- OFFLINE (or Unplugged) ---
+        # Turn Green OFF first, then Red ON
+        echo 0 > "$GREEN"
+        echo 255 > "$RED"
+    fi
+
+    # Wait 1 second before checking again
+    sleep 1
+done
