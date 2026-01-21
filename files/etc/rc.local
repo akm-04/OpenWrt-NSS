@@ -2,7 +2,7 @@
 # the system init finished. By default this file does nothing.
 
 # Start Fan and LED control
-/sbin/fan_control &
+/sbin/auto_fan.sh &
 /sbin/led_monitor &
 
 # Start iperf3 server in Daemon mode
