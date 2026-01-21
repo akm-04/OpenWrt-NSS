@@ -1,9 +1,5 @@
 #!/bin/sh
 
-# Clean up existing commands.
-uci delete luci.commands 2>/dev/null
-uci commit luci
-
 # --- Aquantia Firmware Flash ---
 uci add luci command
 uci set luci.@command[-1].name='Flash 5G LAN Firmware (Aquantia)'
@@ -20,35 +16,44 @@ if [ -z "$FAN_PATH" ]; then
 else
     echo "Success! Detected Fan Controller at: $FAN_PATH"
 
-    # --- Fan Speed Controls Commands (Using Calculated Path) ---
-    # Fan: Low
+    # Fan: Disable (Kills auto_fan script so it stays off)
     uci add luci command
-    uci set luci.@command[-1].name='Fan: Set Low (~2550 RPM)'
-    uci set luci.@command[-1].command="echo 1 > $FAN_PATH/pwm1_enable && echo 170 > $FAN_PATH/pwm1 && echo 'Fan set to Low (170)'"
+    uci set luci.@command[-1].name='Fan: Disable (~0 RPM)'
+    uci set luci.@command[-1].command="/sbin/fan_disable.sh"
 
-    # Fan: Mid
+    # Manually set Speeds
+    
+    # Fan: Low (2250)
     uci add luci command
-    uci set luci.@command[-1].name='Fan: Set Mid (~2800 RPM)'
-    uci set luci.@command[-1].command="echo 1 > $FAN_PATH/pwm1_enable && echo 180 > $FAN_PATH/pwm1 && echo 'Fan set to Mid (180)'"
+    uci set luci.@command[-1].name='Fan: Set Low (~2250 RPM)'
+    uci set luci.@command[-1].command="/sbin/set_fan_speed.sh 2250"
 
-    # Fan: High
+    # Fan: Mid (2750)
     uci add luci command
-    uci set luci.@command[-1].name='Fan: Set High (~3200 RPM)'
-    uci set luci.@command[-1].command="echo 1 > $FAN_PATH/pwm1_enable && echo 200 > $FAN_PATH/pwm1 && echo 'Fan set to High (200)'"
+    uci set luci.@command[-1].name='Fan: Set Mid (~2750 RPM)'
+    uci set luci.@command[-1].command="/sbin/set_fan_speed.sh 2750"
 
-    # Fan: Turbo
+    # Fan: High (3300)
+    uci add luci command
+    uci set luci.@command[-1].name='Fan: Set High (~3300 RPM)'
+    uci set luci.@command[-1].command="/sbin/set_fan_speed.sh 3300"
+
+    # Fan: Turbo (4050)
     uci add luci command
     uci set luci.@command[-1].name='Fan: Set Turbo (~4000 RPM)'
-    uci set luci.@command[-1].command="echo 1 > $FAN_PATH/pwm1_enable && echo 255 > $FAN_PATH/pwm1 && echo 'Fan set to Turbo (Max)'"
+    uci set luci.@command[-1].command="/sbin/set_fan_speed.sh 4200"
 
-    # --- Sensors Commands ---
+    # Restore auto FAN & Sensors
+
+    # Fan: Auto Mode (Restart the script if it was killed)
+    uci add luci command
+    uci set luci.@command[-1].name='Fan: Auto Mode (Reset)'
+    uci set luci.@command[-1].command="/sbin/auto_fan.sh & echo 'Auto Fan Script Restarted'"
 
     # Check Fan RPM
     uci add luci command
     uci set luci.@command[-1].name='Check Fan RPM'
     uci set luci.@command[-1].command="cat $FAN_PATH/fan1_input"
-
-    echo "LuCI commands updated successfully."
 fi
 
 # Check all Zone Temp
