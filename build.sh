@@ -110,8 +110,8 @@ else
     read -p "Press Enter to continue..."
 fi
 
-log_section "Configuring menuconfig, please select any packages you would like to include in the build."
-make menuconfig || { echo -e "${RED}Failed to run menuconfig${NC}"; exit 1; }
+#log_section "Configuring menuconfig, please select any packages you would like to include in the build."
+#make menuconfig || { echo -e "${RED}Failed to run menuconfig${NC}"; exit 1; }
 
 log_section "Starting Full Compile ..."
 debug_compile
